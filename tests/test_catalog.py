@@ -7,10 +7,13 @@ from agentic_reddit import cli
 _READ_OUTPUTS = {
     "subreddit": "Post",
     "post": "Post | Comment",
+    "comment": "Post | Comment",
     "user": "Post | Comment",
     "search": "Post | Subreddit | User",
     "subreddits": "Subreddit",
     "subreddit-info": "Subreddit",
+    "user-info": "User",
+    "related": "Post",
 }
 
 

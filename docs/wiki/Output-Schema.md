@@ -18,10 +18,13 @@ Read command object types:
 |---|---|
 | `subreddit` | Post |
 | `post` | Post at index 0, then threaded Comment objects |
+| `comment` | Post at index 0, then the anchored Comment with recursive replies |
 | `user` | Post and/or Comment, according to `--type` |
 | `search` | Post (`link`), Subreddit (`sr`), or User (`user`) |
 | `subreddits` | Subreddit |
 | `subreddit-info` | One Subreddit |
+| `user-info` | One User |
+| `related` | Post |
 
 Objects are deduplicated by `fullname`. Datetimes are ISO-8601 UTC values ending in `Z`. `id` is a base-36 ID; `fullname` is the corresponding Reddit fullname such as `t3_…` or `t1_…`.
 `Post.over_18` and `Subreddit.over_18` preserve Reddit's explicit NSFW boolean. They are `null` when the upstream `t3.over_18` or `t5.over18` value is absent or malformed; `null` means the NSFW state is unknown, not safe.

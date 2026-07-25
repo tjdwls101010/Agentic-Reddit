@@ -6,10 +6,13 @@ import pytest
 
 from agentic_reddit.errors import EnvelopeParseError, NotFoundError, TargetUnavailableError
 from agentic_reddit.retrieve import (
+    fetch_comment,
     fetch_post,
+    fetch_related,
     fetch_subreddit,
     fetch_subreddit_info,
     fetch_user,
+    fetch_user_info,
     find_subreddits,
     search,
 )
@@ -256,6 +259,62 @@ def test_post_splices_t1_more_with_permalink_subtree():
     assert result.requests_made == 2
 
 
+def test_comment_expands_nested_more_and_uses_returned_parent():
+    root = comment("root", replies=listing([more("t1_root")]))
+    root["data"]["parent_id"] = "t1_ancestor"
+    subtree_root = comment("root", replies=listing([comment("child", depth=1)]))
+    subtree = [listing([post("post")]), listing([subtree_root])]
+    session = FakeSession([post_response([root]), subtree])
+
+    result = fetch_comment(
+        session, "python", "post", "root", comment_limit=10, context=1, max_requests=3
+    )
+
+    assert [type(item).__name__ for item in result.items] == ["Post", "Comment"]
+    assert result.comments[0].replies[0].id == "child"
+    assert "sort=confidence&context=1" in session.paths[0]
+
+
+def test_comment_reports_a_missing_comment_rather_than_the_whole_thread():
+    # Reddit answers an anchored request for a comment that is not in the post with
+    # the post's ordinary top-level listing, so the requested id must be found in
+    # what came back.  Shape alone is not enough: a post with a single top-level
+    # comment returns the same one-t1 forest a genuine anchor does, and accepting
+    # it would hand back an unrelated comment as the requested one.
+    for fallback in (
+        post_response([comment("first"), comment("second")]),
+        post_response([comment("only")]),
+    ):
+        with pytest.raises(NotFoundError, match="comment does not exist"):
+            fetch_comment(FakeSession([fallback]), "python", "post", "missing")
+
+
+def test_comment_accepts_a_requested_comment_nested_under_a_context_ancestor():
+    anchor = comment("ancestor", replies=listing([comment("target", depth=1)]))
+    result = fetch_comment(
+        FakeSession([post_response([anchor])]), "python", "post", "TARGET", context=3
+    )
+    assert result.comments[0].id == "ancestor"
+    assert result.comments[0].replies[0].id == "target"
+
+
+def test_user_info_requires_and_returns_t2():
+    result = fetch_user_info(
+        FakeSession([thing("t2", {"id": "synthetic", "name": "t2_synthetic"})]), "synthetic"
+    )
+    assert [item.fullname for item in result.users] == ["t2_synthetic"]
+    with pytest.raises(EnvelopeParseError, match="not a t2 envelope"):
+        fetch_user_info(FakeSession([listing([])]), "synthetic")
+
+
+def test_related_selects_second_listing_and_deduplicates():
+    response = [listing([post("original")]), listing([post("other"), post("other")])]
+    result = fetch_related(FakeSession([response]), "original")
+
+    assert [item.id for item in result.posts] == ["other"]
+    assert result.stop_reason == "listing_exhausted"
+
+
 def test_post_expands_nested_mores_before_reporting_top_level_remainder():
     first = comment("first", replies=listing([more("t1_first")]))
     second = comment("second", replies=listing([more("t1_second")]))
@@ -321,7 +380,12 @@ def test_post_comment_limit_caps_oversized_initial_and_subtree_forests():
     assert expanded.comments[0].more_count == 2
 
 
-def test_post_rejects_a_permalink_subtree_that_makes_no_progress():
+def test_post_reports_a_permalink_subtree_that_makes_no_progress_as_incomplete():
+    # Measured against Reddit 2026-07-26: some deep branches answer their own
+    # permalink with exactly what is already visible, so the more node never
+    # clears.  That is a dead end in one thread, not response drift, and reporting
+    # it as drift sent the caller into a pointless doctor / setup --force cycle.
+    # The branch is abandoned once, and the tree is reported as incomplete.
     parent = comment("parent", replies=listing([more("t1_parent")]))
     repeated = [
         listing([post("post")]),
@@ -329,9 +393,10 @@ def test_post_rejects_a_permalink_subtree_that_makes_no_progress():
     ]
     session = FakeSession([post_response([parent]), repeated])
 
-    with pytest.raises(EnvelopeParseError, match="made no progress for t1_parent"):
-        fetch_post(session, "post", comment_limit=10, max_requests=10)
+    result = fetch_post(session, "post", comment_limit=10, max_requests=10)
 
+    assert result.stop_reason == "depth_capped"
+    assert [item.id for item in result.comments] == ["parent"]
     assert session.paths == [
         "/comments/post.json?limit=10&sort=confidence",
         "/r/python/comments/post/_/parent.json?limit=9",

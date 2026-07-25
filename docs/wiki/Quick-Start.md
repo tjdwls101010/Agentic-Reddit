@@ -37,11 +37,24 @@ Replace the synthetic `abc123` id and title portion with a real post URL. `post`
 comment tree within the requested depth and comment limits. A stop reason of
 `depth_capped` or `comment_limit` means that some comments remain unexpanded.
 
+Read one comment and its reply subtree from its permalink:
+
+```bash
+agentic-reddit comment https://www.reddit.com/r/python/comments/abc123/example/def456/ \
+  --context 2 --output comment.json
+```
+
 ## 4. Search or inspect a user
 
 ```bash
 agentic-reddit search "python packaging" --type link --limit 20 --output search.json
 agentic-reddit user spez --type submitted --limit 10 --output user.json
+```
+
+Find other communities discussing the same link:
+
+```bash
+agentic-reddit related abc123 --sort num_comments --output related.json
 ```
 
 Use `agentic-reddit catalog` for the machine-readable command catalog and

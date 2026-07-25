@@ -7,6 +7,7 @@ from urllib.parse import urlencode
 from .errors import InvalidIdentifierError
 from .identity import (
     normalize_post_identifier,
+    normalize_subreddit_group,
     normalize_subreddit_identifier,
     normalize_user_identifier,
 )
@@ -18,6 +19,7 @@ _USER_SORTS = frozenset({"new", "hot", "top", "controversial"})
 _SEARCH_TYPES = frozenset({"link", "sr", "user"})
 _SEARCH_SORTS = frozenset({"relevance", "hot", "top", "new", "comments"})
 _TIMES = frozenset({"hour", "day", "week", "month", "year", "all"})
+_DUPLICATES_SORTS = frozenset({"num_comments", "new"})
 
 
 def subreddit_path(
@@ -30,7 +32,7 @@ def subreddit_path(
     time: str | None = None,
 ) -> str:
     """Build a subreddit listing path."""
-    _, name = normalize_subreddit_identifier(subreddit)
+    _, name = normalize_subreddit_group(subreddit)
     _choice(sort, _SUBREDDIT_SORTS, "subreddit sort")
     if time is not None:
         _choice(time, _TIMES, "time")
@@ -74,14 +76,22 @@ def comment_subtree_path(
     *,
     limit: int | None = None,
     depth: int | None = None,
+    sort: str | None = None,
+    context: int | None = None,
 ) -> str:
     """Build a comment-permalink subtree path without using ``morechildren``."""
     _, name = normalize_subreddit_identifier(subreddit)
     _, normalized_post_id = normalize_post_identifier(post_id)
     _, normalized_comment_id = normalize_post_identifier(comment_id)
+    if sort is not None:
+        _choice(sort, _COMMENT_SORTS, "comment sort")
+    if context is not None and (
+        not isinstance(context, int) or isinstance(context, bool) or context < 0
+    ):
+        raise InvalidIdentifierError("invalid comment context")
     return _with_query(
         f"/r/{name}/comments/{normalized_post_id}/_/{normalized_comment_id}.json",
-        (("limit", limit), ("depth", depth)),
+        (("limit", limit), ("depth", depth), ("sort", sort), ("context", context)),
     )
 
 
@@ -105,6 +115,37 @@ def user_path(
     return _with_query(
         f"/user/{name}/{listing_type}.json",
         (("sort", sort), ("t", time), ("after", after), ("count", count), ("limit", limit)),
+    )
+
+
+def user_about_path(user: str) -> str:
+    """Build a Reddit user metadata path."""
+    _, name = normalize_user_identifier(user)
+    return f"/user/{name}/about.json"
+
+
+def duplicates_path(
+    post: str,
+    *,
+    sort: str | None = None,
+    crossposts_only: bool = False,
+    after: str | None = None,
+    count: int | None = None,
+    limit: int | None = None,
+) -> str:
+    """Build a post's other-discussions listing path."""
+    _, post_id = normalize_post_identifier(post)
+    if sort is not None:
+        _choice(sort, _DUPLICATES_SORTS, "duplicates sort")
+    return _with_query(
+        f"/duplicates/{post_id}.json",
+        (
+            ("sort", sort),
+            ("crossposts_only", 1 if crossposts_only else None),
+            ("after", after),
+            ("count", count),
+            ("limit", limit),
+        ),
     )
 
 

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentic-reddit"
-version = "0.2.0"
+version = "0.3.0"
 description = "Agentic Reddit — anonymous browser-backed, read-only Reddit retrieval."
 readme = "README.md"
 requires-python = ">=3.11"

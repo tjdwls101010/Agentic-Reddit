@@ -5,6 +5,7 @@ from agentic_reddit.identity import (
     normalize_comment_identifier,
     normalize_permalink,
     normalize_post_identifier,
+    normalize_subreddit_group,
     normalize_subreddit_identifier,
     normalize_user_identifier,
     permalink_identifiers,
@@ -22,6 +23,28 @@ from agentic_reddit.identity import (
 )
 def test_normalize_subreddit_forms(raw, expected):
     assert normalize_subreddit_identifier(raw) == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("abc", ("subreddits", "abc")),
+        ("abc+Def", ("subreddits", "abc+Def")),
+        ("r/abc+Def", ("subreddits", "abc+Def")),
+        ("https://old.reddit.com/r/abc+Def/", ("subreddits", "abc+Def")),
+    ],
+)
+def test_normalize_subreddit_group(raw, expected):
+    assert normalize_subreddit_group(raw) == expected
+
+
+def test_normalize_subreddit_group_rejects_invalid_groups():
+    with pytest.raises(InvalidIdentifierError, match="too many subreddits"):
+        normalize_subreddit_group("+".join(["abc"] * 11))
+    with pytest.raises(InvalidIdentifierError, match="invalid subreddit name"):
+        normalize_subreddit_group("abc++def")
+    with pytest.raises(InvalidIdentifierError, match="invalid subreddit name"):
+        normalize_subreddit_identifier("abc+def")
 
 
 @pytest.mark.parametrize(

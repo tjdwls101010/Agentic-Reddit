@@ -25,12 +25,15 @@ Read commands write JSON or NDJSON to `--output` or to the default output direct
 
 | Command | Positional input | Command-specific flags | Output |
 |---|---|---|---|
-| `subreddit` | `<name>`: `python`, `r/python`, `/r/python`, or a subreddit URL. `all` and `popular` mean the public front page. | `--sort {hot,new,top,rising,controversial}` (default `hot`); `--time {hour,day,week,month,year,all}` (default `day`, for `top`/`controversial`) | Post |
-| `post` | `<url\|id>`: allowed Reddit post URL, `t3_<id36>`, or bare `<id36>`. | `--comment-sort {confidence,top,best,new,controversial,old,qa}` (default `confidence`); `--depth N`; `--comment-limit N` (default `500`) | One Post followed by threaded Comments |
+| `subreddit` | `<name>`: `python`, `r/python`, `/r/python`, or a subreddit URL. `all` and `popular` mean the public front page. Combine up to 10 names with `+`, for example `python+django+learnpython`, to read them as one listing at one request per page. | `--sort {hot,new,top,rising,controversial}` (default `hot`); `--time {hour,day,week,month,year,all}` (default `day`, for `top`/`controversial`) | Post |
+| `post` | `<url\|id>`: allowed Reddit post URL, `t3_<id36>`, or bare `<id36>`. A comment permalink is rejected with exit 1 and directs the user to `comment`; no browser is started. | `--comment-sort {confidence,top,best,new,controversial,old,qa}` (default `confidence`); `--depth N`; `--comment-limit N` (default `500`) | One Post followed by threaded Comments |
+| `comment` | `<permalink>`: Reddit comment permalink URL. | `--comment-sort {confidence,top,best,new,controversial,old,qa}` (default `confidence`); `--depth N`; `--comment-limit N` (default `500`); `--context N` (include up to N ancestors; Reddit clamps large values) | One Post followed by the anchored Comment with nested replies. With `--context`, the written Comment is the ancestor and contains the requested comment. |
 | `user` | `<name>`: `spez`, `u/spez`, `/user/spez`, or a profile URL. | `--type {overview,submitted,comments,top}` (default `overview`); `--sort {new,hot,top,controversial}`; `--time {hour,day,week,month,year,all}` | Post and/or Comment |
 | `search` | `<query>` | `--subreddit NAME` (restricts to that subreddit); `--type {link,sr,user}` (default `link`); `--sort {relevance,hot,top,new,comments}`; `--time {hour,day,week,month,year,all}` | Post (`link`), Subreddit (`sr`), or User (`user`) |
 | `subreddits` | `<query>` | `--limit N` | Subreddit |
-| `subreddit-info` | `<name>` in the same forms as `subreddit` | None; singular lookup | One Subreddit |
+| `subreddit-info` | `<name>` in the single-name forms accepted by `subreddit` | None; singular lookup | One Subreddit |
+| `user-info` | `<name>` in the same forms as `user` | None; singular lookup. Exits 5 when the account does not exist or is unavailable. | One User |
+| `related` | `<url\|id>`: allowed Reddit post URL, `t3_<id36>`, or bare `<id36>`. | `--sort {num_comments,new}`; `--crossposts-only`; `--limit N` | Post; only other discussions, without repeating the original. Exits 5 when a post ID does not exist. |
 
 ### Base flags: every read command
 
@@ -54,7 +57,7 @@ Read commands write JSON or NDJSON to `--output` or to the default output direct
 |---|---|
 | `--limit N` | Maximum objects to materialize. The request budget remains an upper bound. |
 | `--since YYYY-MM-DD` / `--until YYYY-MM-DD` | Inclusive UTC date window. |
-`search --type sr` and `search --type user` reject date windows. `post` has `--depth N` and `--comment-limit N` instead of `--limit` or date-window flags; `subreddit-info` has none of those flags.
+`search --type sr` and `search --type user` reject date windows. `subreddits` and `related` accept `--limit` without date windows. `post` and `comment` use comment-tree limits instead of `--limit` or date-window flags; `subreddit-info` and `user-info` have none of those flags.
 
 ## File summary and stop reasons
 
@@ -64,7 +67,7 @@ The stderr summary is shaped as:
 {counts}, range {oldest}..{newest}, stop reason: {reason}, budget {remaining}/{used}. Saved to {path}
 ```
 
-`{counts}` is a single noun for homogeneous output or comma-separated nonzero counts for mixed post/comment output, such as `1 post, 2 comments`. `{remaining}/{used}` comes from `x-ratelimit-remaining` and `x-ratelimit-used` only when the complete valid header set also includes `x-ratelimit-reset`; otherwise it is `unknown/unknown`.
+`{counts}` is a single noun for homogeneous output or comma-separated nonzero counts for mixed post/comment output, such as `1 post, 2 comments`. For `post` and `comment`, the comment count includes nested replies recursively. `{remaining}/{used}` comes from `x-ratelimit-remaining` and `x-ratelimit-used` only when the complete valid header set also includes `x-ratelimit-reset`; otherwise it is `unknown/unknown`.
 
 | Stop reason | Meaning |
 |---|---|
@@ -73,7 +76,7 @@ The stderr summary is shaped as:
 | `no_matches` | The search or listing had no results. |
 | `since_crossed` | The `--since` boundary was reached. |
 | `tree_complete` | A post's comment tree has no unexpanded `more` nodes. |
-| `depth_capped` / `comment_limit` | Comment expansion stopped at the requested cap; unexpanded comments remain. |
+| `depth_capped` / `comment_limit` | Comment expansion stopped at the requested cap, or `depth_capped` marks a branch Reddit will not expand further; the tree is incomplete. |
 | `rate_limited` | Reddit's reported budget reached zero or returned HTTP 429. |
 | `max_requests` | The per-run request budget stopped the command. |
 

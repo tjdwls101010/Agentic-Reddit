@@ -554,3 +554,24 @@ def test_doctor_prints_structured_diagnostics(
 
     assert cli.main(["doctor"]) == 0
     assert json.loads(capsys.readouterr().err) == diagnostics
+
+
+def test_post_rejects_comment_permalink_offline(capsys: pytest.CaptureFixture[str]) -> None:
+    permalink = "https://www.reddit.com/r/python/comments/abc123/title/def456/"
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["post", permalink])
+    assert exc.value.code == 1
+    assert "agentic-reddit comment <url>" in capsys.readouterr().err
+
+
+def test_item_summary_counts_nested_comment_replies() -> None:
+    comments = [object.__new__(cli.model.Comment) for _ in range(4)]
+    comments[0].replies = [comments[1]]
+    comments[1].replies = [comments[2]]
+    comments[2].replies = [comments[3]]
+    comments[3].replies = []
+
+    assert cli._item_summary([object.__new__(cli.model.Post), comments[0]], "post") == (
+        "1 post, 4 comments"
+    )

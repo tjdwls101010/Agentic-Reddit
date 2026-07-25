@@ -22,3 +22,7 @@ env/
 
 # OS / editor
 .DS_Store
+
+# Agent session state
+.codex-runs/
+.gjc/
