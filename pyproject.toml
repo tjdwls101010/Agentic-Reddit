@@ -22,7 +22,7 @@ classifiers = [
 ]
 dependencies = [
     "scrapling[fetchers]>=0.4.10,<0.5",
-    "platformdirs>=4.0",
+    "platformdirs>=4.11.0",
 ]
 
 [project.optional-dependencies]
