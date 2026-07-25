@@ -477,6 +477,7 @@ def test_finish_escapes_control_characters_in_display_path(
     assert output.exists()
     assert "Saved to " + str(output).replace("\n", "\\x0a") in capsys.readouterr().err
 
+
 def test_finish_escapes_supplementary_format_character_in_display_path(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
