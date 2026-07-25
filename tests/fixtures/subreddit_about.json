@@ -1,0 +1,21 @@
+{
+  "kind": "t5",
+  "data": {
+    "id": "synthetic5",
+    "name": "t5_synthetic5",
+    "display_name": "SyntheticSpace",
+    "display_name_prefixed": "r/SyntheticSpace",
+    "title": "A synthetic community",
+    "public_description": "Fixture data with no real account information.",
+    "description": "This community exists only in tests.",
+    "subscribers": 1234,
+    "created_utc": 1704067200,
+    "over18": true,
+    "subreddit_type": "public",
+    "url": "/r/SyntheticSpace/",
+    "lang": "en",
+    "community_icon": "https://example.invalid/community.png",
+    "icon_img": "https://example.invalid/fallback.png",
+    "quarantine": false
+  }
+}

@@ -8,9 +8,9 @@
 
 - **`setup`** — provision the isolated browser (download Chromium into the app-owned `browsers/` dir) and warm the persistent profile by loading `reddit.com` until the anti-bot challenge clears. Takes **no credentials of any kind**. Flags: `--force` (re-download / re-warm), `--headed` (if Q-2 shows headless is challenged), `--profile`, `--profile-dir`, `--timeout-seconds` (default 120). Exit 0 / 1 / 2.
 - **`status`** — one cheap read (`/r/announcements/about.json`) through the warmed profile → classify. Flags: `--profile`, `--profile-dir`, `--json`. Exit: 0 ready, 2 browser missing / profile not warmed / challenge unresolved, 3 rate-limited.
-- **`doctor`** — deeper diagnostic: browser present? profile warm? challenge clears? a real `Listing` comes back? current `x-ratelimit-remaining`/`-reset`? Flags: `--profile`, `--profile-dir`. Exit 0 / 1 / 2.
-- **`catalog`** — machine-readable description of the whole CLI, generated from the parser. Flag: `--json` (no-op; always JSON). Offline, no browser.
-- **`schema`** — the `Post`/`Comment`/`Subreddit`/`User`/`Media` output schema. Flag: `--json` (JSON Schema draft 2020-12). Offline, no browser.
+- **`doctor`** — deeper diagnostic: browser present? profile warm? challenge clears? a real `Listing` comes back? Writes one compact JSON object to stderr: `browser_executable`, `profile`, `listing`, and `rate_budget` (`remaining`, `reset`, `used`). Flags: `--profile`, `--profile-dir`. Exit 0 / 1 / 2.
+- **`catalog`** — machine-readable description of the whole CLI, generated from the parser. `--json` selects compact JSON; without it the JSON is indented. Offline, no browser.
+- **`schema`** — the `Post`/`Comment`/`Subreddit`/`User`/`Media` output schema. `--json` selects compact JSON; without it the JSON is indented. Offline, no browser.
 
 ### Read primitives (write JSON to a file; one-line stderr summary)
 
@@ -21,22 +21,26 @@
 - **`subreddits <query>`** — find subreddits by name/topic. → `Subreddit`.
 - **`subreddit-info <name>`** — subreddit metadata (subscribers, description, type, `over_18`, quarantine). → single `Subreddit`.
 
-### Common read flags (shared group)
+### Read-flag capability groups
 
-`--format {json,ndjson}` (default json), `--output PATH` (default: timestamped file under the platform data dir), `--limit N` (default unbounded, capped by the request budget), `--since YYYY-MM-DD`, `--until YYYY-MM-DD` (client-side over `--sort new`), `--wait-on-limit`, `--max-wait SECONDS`, `--profile`, `--profile-dir`, `--raw`, `--no-redact`, `-v/--verbose`.
+Every read command accepts `--format {json,ndjson}` (default `json`), `--output PATH`, `--wait-on-limit`, `--max-wait SECONDS` (requires `--wait-on-limit`), `--profile`, `--profile-dir`, `--raw`, `--no-redact` (requires `--raw`), and `-v/--verbose`.
+
+`subreddit`, `user`, and `search --type link` also accept `--limit N`, `--since YYYY-MM-DD`, and `--until YYYY-MM-DD`. Any date window forces chronological `new` ordering, regardless of `--sort`. `search --type sr` and `search --type user` reject `--since` and `--until`.
+
+`subreddits` accepts `--limit N` only from the bounded-listing group. `post` instead accepts `--depth N` and `--comment-limit N` (default `500`); it has no `--limit` or date-window flags. `subreddit-info` is a singular lookup and has no limit, date-window, or tree-expansion flags.
 
 `--output` default naming: `<safe_identifier>-<UTC timestampZ>.<json|ndjson>` under `output/`. `subreddit`'s identifier is the sub name; `post`'s is the post id36.
 
 ## Output contract
 
 - Read commands write to a **file**; only a one-line summary hits **stderr**; nothing useful goes to stdout.
-- Summary format: `"{N} posts, range {oldest}..{newest}, stop reason: {reason}, budget {remaining}/{used}. Saved to {path}"` (`{N} comments …` / `{N} subreddits …` / `{N} users …` per output object). **Surfacing the remaining rate budget in the summary is deliberate** — it is the scarce resource (D8) and the skill needs to see it to plan a chain.
-- `--raw` attaches the raw `thing.data` per object (redacted unless `--no-redact`, which prints a warning). Debug-only.
+- Summary format: `"{counts}, range {oldest}..{newest}, stop reason: {reason}, budget {remaining}/{used}. Saved to {path}"`. `{counts}` is one noun for homogeneous output (for example, `3 posts`) and comma-separated nonzero counts for mixed post/comment output (for example, `1 post, 2 comments`). The budget is the observed `x-ratelimit-remaining`/`x-ratelimit-used` pair only when all three rate headers (`remaining`, `reset`, and `used`) are valid; otherwise it is `unknown/unknown`.
+- `--raw` attaches raw `thing.data` per object for debugging. By default redaction is applied recursively to every `raw` attachment, including raw data in nested replies; `--no-redact` disables only that raw-data redaction and prints a warning. Normalized fields are not redacted.
 
 ## `stop_reason` vocabulary (in the stderr summary)
 
 - `limit_reached` — `--limit` stopped it; there is more.
-- `listing_exhausted` / `no_after` — genuinely the end (`after` is null).
+- `listing_exhausted` — genuinely the end (`after` is null).
 - `no_matches` — a search/listing with no hits (real; report as such).
 - `since_crossed` — `--since` date boundary reached.
 - `tree_complete` *(post)* — the comment tree was fully expanded; no unexpanded `more` remains.
@@ -53,10 +57,10 @@ Follows the **X/Threads convention** (3 = rate-limited, 4 = drift), NOT Facebook
 | 0 | success (limit met / date window reached / listing or tree exhausted) |
 | 1 | usage error, invalid identifier, or unexpected failure |
 | 2 | browser/session not ready — not installed, profile not warmed, challenge unresolved. Fix: `agentic-reddit setup` |
-| 3 | rate-limited (budget exhausted or 429). See `--wait-on-limit` |
+| 3 | rate-limited after writing any records already retrieved (a partial result); budget exhausted or 429. See `--wait-on-limit` |
 | 4 | Reddit's response no longer matches expectations — envelope parse failure, or an anti-bot challenge page where JSON was expected. Fix: `agentic-reddit doctor`, re-run `setup`, or upgrade |
 | 5 | target subreddit/user/post does not exist or is unavailable (private, banned, quarantined, suspended, deleted) |
-| 7 | `--since` requested but the run stopped before confirming it was reached |
+| 7 | `--since` was requested and the run stopped before confirming the lower boundary was crossed; this takes precedence over the partial rate-limit exit |
 
 ## Typed errors (`errors.py`, base `AgenticRedditError`, each with `exit_code`)
 

@@ -6,20 +6,15 @@ Ordered; loop each phase until its verify gate passes. Prefer many small green s
 
 ---
 
-## Phase 0 — Cold-start verification under scrapling (do NOT skip)
+## Phase 0 — Cold-start verification under Scrapling (passed 2026-07-25)
 
-Unusually for this family, the *data* layer was fully verified during planning (see `00` "Recon status") — every endpoint, the comment-tree mechanism, pagination, search types, the rate model, and NSFW reach were all confirmed **logged out**. What planning could **not** test is scrapling's cold start, because all recon ran in a Chrome profile that already held anti-bot clearance.
+Phase 0 established that Scrapling's Playwright-managed launch remains challenged in fresh headless and headed profiles, including `real_chrome=True`. The approved bounded revision passed with an isolated Chrome-for-Testing subprocess launched directly using only a persistent `--user-data-dir`, loopback remote-debugging port, and first-run suppression; Scrapling attached over CDP. A genuinely fresh **headless** profile returned HTTP 200 `Listing` on the first same-origin fetch.
 
-Resolve the open questions from `01-decisions.md`:
+The complete anonymous capture exercised all six read surfaces plus search result kinds, NSFW spelling variants, unavailable targets, rate headers, and top-level `more`, saving raw bodies under gitignored `scratch/phase0-run-cdp-full-a/`. The run completed 18 requests with `remaining` 99→82 and no 429. Resolved decisions are recorded in `01-decisions.md`.
 
-- **Q-1 (GATE — the only remaining single point of failure)** — a **genuinely fresh** scrapling persistent profile: launch → load `https://www.reddit.com/` → poll until a real Reddit document renders → same-origin `fetch('/r/python/hot.json')` → expect **200 + `Listing`**. **If this fails, halt and consult the user.** Do not reach for fingerprint-spoofing (D15).
-- **Q-2** — headless vs headed: does headless clear the challenge? How long does clearance persist in the profile (does `setup` need periodic re-running)? If only headed works, raise it with the user before defaulting to a window-per-command UX.
-- **Q-3** — top-level `more` (`parent_id` = `t3_…`): choose between raising the initial `limit`, per-child permalink GETs under budget, or reporting the remainder unexpanded.
-- **Q-4** — confirm the ~600 s window length, whether the budget is per-IP or per-profile, and the exact shape at `remaining == 0` (429 body, `retry-after` presence).
-- **Q-5** — `over_18` (`t3`) vs `over18` (`t5`) both map correctly through the model.
-- **Q-6** — capture anonymous response shapes for private / banned / quarantined subreddits, suspended / deleted users, and deleted posts, so exit 5 maps correctly instead of surfacing as a parse error.
+**Implementation contract:** `BrowserSession` owns the minimal Chrome subprocess and attaches Scrapling over its discovered WebSocket CDP endpoint. Do not use Scrapling's managed launch path, add stealth/fingerprint patches, or use Crawl4AI. Top-level `more` is reported unexpanded when the comment limit is reached; unavailable 403/404 JSON shapes map to exit 5.
 
-**Verify:** a scratch script cold-starts a fresh profile and pulls one page from each of the six read endpoints, saving raw bodies to `scratch/` as future fixture sources. Update `02-recon-findings.md` if reality differs.
+**Verify:** preserve an opt-in live probe that cold-starts a fresh isolated profile and pulls one page from each of the six read endpoints. The 2026-07-25 evidence is the baseline; CI remains offline.
 
 ## Phase 1 — Scaffold + packaging + offline commands
 
@@ -29,7 +24,7 @@ Resolve the open questions from `01-decisions.md`:
 
 ## Phase 2 — Browser session + pacing + setup/status/doctor
 
-`session.py` (`BrowserSession`: lazy scrapling import, persistent context under `profiles/<name>/browser/`, isolated `PLAYWRIGHT_BROWSERS_PATH`, `warm()` poll loop, `get_json()` via in-page `fetch` returning body **and** `x-ratelimit-*` headers, `close()`), `pacing.py` (floor + budget governor), `identity.py`, and the `setup`/`status`/`doctor` commands.
+`session.py` (`BrowserSession`: lazy Scrapling import; install/locate isolated Chrome-for-Testing under `browsers/`; start it as a minimal headless subprocess with persistent context under `profiles/<name>/browser/`; discover its loopback CDP WebSocket endpoint; attach `DynamicSession`; `warm()` poll loop; `get_json()` via in-page `fetch` returning body **and** `x-ratelimit-*` headers; `close()` terminates Scrapling and the owned subprocess), `pacing.py` (floor + budget governor), `identity.py`, and the `setup`/`status`/`doctor` commands.
 
 **Verify:** `agentic-reddit setup` provisions the browser and warms a fresh profile (Q-1/Q-2 satisfied); `status` exits 0 and reports remaining budget; a second invocation reuses the warm profile without re-solving the challenge; `get_json` on a challenge/HTML body raises `ChallengeError` (exit 4); the 1.0 s floor is observed and cannot be bypassed. `test_session.py`/`test_pacing.py`/`test_identity.py` green (all with fakes, no Chromium).
 

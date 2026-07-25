@@ -1,0 +1,29 @@
+{
+  "kind": "Listing",
+  "data": {
+    "after": null,
+    "before": null,
+    "children": [
+      {
+        "kind": "t5",
+        "data": {
+          "id": "searchsr01",
+          "name": "t5_searchsr01",
+          "display_name": "SyntheticSearchSpace",
+          "display_name_prefixed": "r/SyntheticSearchSpace",
+          "title": "Synthetic search community",
+          "public_description": "A hand-authored fixture search result.",
+          "description": "Synthetic fixture data only.",
+          "subscribers": 1234,
+          "created_utc": 1704067200,
+          "over18": false,
+          "subreddit_type": "public",
+          "url": "/r/SyntheticSearchSpace/",
+          "lang": "en",
+          "community_icon": "https://assets.example.invalid/synthetic-community.png",
+          "quarantine": false
+        }
+      }
+    ]
+  }
+}

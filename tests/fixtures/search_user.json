@@ -1,0 +1,28 @@
+{
+  "kind": "Listing",
+  "data": {
+    "after": null,
+    "before": null,
+    "children": [
+      {
+        "kind": "t2",
+        "data": {
+          "id": "searchuser01",
+          "name": "synthetic_search_user",
+          "created_utc": 1704067200,
+          "link_karma": 12,
+          "comment_karma": 34,
+          "total_karma": 46,
+          "is_gold": false,
+          "is_mod": false,
+          "is_employee": false,
+          "verified": false,
+          "has_verified_email": false,
+          "icon_img": "https://assets.example.invalid/synthetic-user.png",
+          "accept_followers": false,
+          "url": "/user/synthetic_search_user/"
+        }
+      }
+    ]
+  }
+}

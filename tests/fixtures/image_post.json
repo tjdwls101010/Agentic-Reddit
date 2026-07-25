@@ -1,0 +1,14 @@
+{
+  "id": "image001",
+  "name": "t3_image001",
+  "permalink": "/r/SyntheticSpace/comments/image001/image/",
+  "url": "https://i.example.invalid/synthetic-image.png",
+  "subreddit": "SyntheticSpace",
+  "author": "synthetic_image_author",
+  "title": "Synthetic image",
+  "created_utc": 1704067200,
+  "post_hint": "image",
+  "preview": {
+    "images": [{"source": {"url": "https://preview.example.invalid/synthetic-image.png", "width": 1024, "height": 768}}]
+  }
+}
