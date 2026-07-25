@@ -69,6 +69,6 @@ HTML 파싱이 아니다. model/parse/retrieve/cli 계층은 형제들과 거의
 - Repo remote is `github.com/tjdwls101010/Agentic-Reddit`. The PyPI trusted publisher is **already working** (the `0.0.1` placeholder shipped through it): workflow **`publish.yml`**, environment **`pypi`** — keep both names, just harden the workflow's contents.
 - **Naming triple**: dist `agentic-reddit` / import `agentic_reddit` / command `agentic-reddit`. Env override `AGENTIC_REDDIT_PROFILE_DIR`.
 - **scrapling docs are cached locally** at `../.tmp/docs_scrapling/` (including a Korean README at `docs_scrapling/README_KR.md`). crawl4ai is also cached there but is **not** used by this project.
-- Recon was performed with Claude-in-Chrome on the `rararat` profile — first logged in, then **logged out** for the anonymous verification pass. The account (`Horror-Highway1207`) plays **no runtime role**; the shipped tool never logs in.
+- Recon was performed with Claude-in-Chrome on a real Chrome profile — first logged in, then **logged out** for the anonymous verification pass. The account used for recon plays **no runtime role**; the shipped tool never logs in and stores no credentials.
 - The single riskiest item is Phase 0 Q-1 (cold-start challenge under a fresh scrapling profile). Everything else was verified during planning. Do Q-1 first, before writing much code.
 - If `setup` ends up needing a headed browser (Q-2), that is a real UX regression for a distributed CLI — raise it with the user rather than silently defaulting to a visible window per command.

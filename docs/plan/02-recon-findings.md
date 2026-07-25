@@ -1,6 +1,6 @@
 # Recon Findings — Live Capture 2026-07-24
 
-Empirical grounding for the whole plan. Captured live via **Claude-in-Chrome** (the `rararat` Chrome profile — first logged in as `Horror-Highway1207`, then **logged out** for the anonymous verification pass) plus `curl` from the user's own machine (residential IP). Everything below is **observed**, not assumed.
+Empirical grounding for the whole plan. Captured live via **Claude-in-Chrome** on a real Chrome profile — first logged in, then **logged out** for the anonymous verification pass — plus `curl` from the maintainer's own machine (residential IP). Everything below is **observed**, not assumed. The account used for recon plays **no runtime role**: the shipped tool never logs in.
 
 **The `Listing`/`thing` data schema is ~15 years stable and is the safe part. The _access_ layer is the volatile, project-defining part** — §1–§3 are what forced the architecture.
 
@@ -23,7 +23,7 @@ Empirical grounding for the whole plan. Captured live via **Claude-in-Chrome** (
 
 `https://www.reddit.com/prefs/apps` still renders the classic developer form (`web`/`installed`/`script` radios, a reCAPTCHA, a `create app` button). **But the backend refuses to create the app**, returning a pointer to the *Responsible Builder Policy* instead.
 
-**Verified empirically: app creation was refused on two different Reddit accounts** — a 1-day-old account (`Horror-Highway1207`, karma 1, email verified) and a second established account. This is a **policy gate, not an account-quality heuristic.**
+**Verified empirically: app creation was refused on two different Reddit accounts** — one 1-day-old (karma 1, email verified) and one established. This is a **policy gate, not an account-quality heuristic.**
 
 Reddit's own policy text confirms it:
 
