@@ -1,0 +1,21 @@
+{
+  "id": "gallery001",
+  "name": "t3_gallery001",
+  "permalink": "/r/synthetic_space/comments/gallery001/gallery/",
+  "url": "https://example.invalid/gallery",
+  "subreddit": "synthetic_space",
+  "author": "synthetic_gallery_author",
+  "title": "Synthetic gallery",
+  "created_utc": 1704067200,
+  "gallery_data": {
+    "items": [{"media_id": "gallery-one"}, {"media_id": "gallery-two"}]
+  },
+  "media_metadata": {
+    "gallery-one": {
+      "s": {"u": "https://example.invalid/gallery-one.png?x=1&amp;y=2", "x": 640, "y": 480}
+    },
+    "gallery-two": {
+      "s": {"u": "https://example.invalid/gallery-two.png", "x": 800, "y": 600}
+    }
+  }
+}

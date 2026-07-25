@@ -10,7 +10,7 @@
 
 ## The one-paragraph mental model
 
-A `BrowserSession` opens a persistent-profile Chromium (scrapling), loads `https://www.reddit.com/` once so the JS anti-bot challenge clears, and then serves every read as a **same-origin `fetch()` executed inside that page**, returning parsed JSON. Everything above the session — pagination, models, schema, CLI — never learns that a browser exists; it just calls `get_json(path) -> dict`. That single seam is what makes the transport swappable (D1) and what keeps ~80% of this package identical to its siblings.
+A `BrowserSession` starts the isolated Chrome-for-Testing executable as a minimal subprocess with a persistent profile and loopback CDP port, waits for the browser endpoint, and attaches Scrapling over CDP. Chrome loads `https://www.reddit.com/` once so the JS anti-bot challenge clears; every read is then a **same-origin `fetch()` executed inside that page**, returning parsed JSON. Scrapling's Playwright-managed launch path is deliberately not used because fresh managed profiles remained challenged in Phase 0, while the minimal direct subprocess cleared the challenge headless. Everything above the session — pagination, models, schema, CLI — never learns that a browser exists; it just calls `get_json(path) -> dict`. That single seam keeps the transport swappable.
 
 ## Module structure (`src/agentic_reddit/`)
 
@@ -23,20 +23,20 @@ Ported from `agentic-threads` (shape) with the transport layer replaced. **No cr
 | `config.py` | `APP_NAME="agentic-reddit"`; paths (`platformdirs.user_data_dir`); `MIN_REQUEST_PAUSE_SECONDS = 1.0` + `clamp_request_pause`; `DEFAULT_MAX_REQUESTS`; `REDDIT_BASE="https://www.reddit.com"`; env prefix `AGENTIC_REDDIT_*`; profile-name validation. | agentic-threads `config.py` |
 | `errors.py` | Typed hierarchy under `AgenticRedditError`, each carrying an `exit_code` class attr. See `04`. | agentic-threads `errors.py` |
 | `identity.py` | **Identifier normalize-then-validate** (no auth here — the siblings' `auth.py` minus everything credential-shaped): subreddit name (`python`, `r/python`, `/r/python`, URL), username (`spez`, `u/spez`, `/user/spez`, URL), post (`t3_<id36>`, `<id36>`, permalink URL), comment permalink → `(kind, value)`. Host allowlist (`reddit.com`, `www.`, `old.`, `np.`, `sh.reddit.com`). | agentic-threads `auth.py` (identifier half only) |
-| `session.py` | `BrowserSession`: lazy scrapling import; persistent-context launch (isolated `PLAYWRIGHT_BROWSERS_PATH`); `warm()` (load reddit.com, poll until the challenge clears); `get_json(path) -> dict` via in-page `fetch`; `close()`. Also `run_setup()`, `run_status()`, `run_doctor()`. **Minimal stealth config (D15).** | agentic-facebook `session.py` (provisioning/persistent context) |
+| `session.py` | `BrowserSession`: lazy Scrapling import; locate the isolated Chrome-for-Testing binary; start a minimal subprocess with persistent profile + loopback CDP port; attach `DynamicSession` over the discovered WebSocket endpoint; `warm()` loads reddit.com and polls until the challenge clears; `get_json(path)` uses in-page `fetch`; `close()` terminates Scrapling and the owned subprocess. Also `run_setup()`, `run_status()`, `run_doctor()`. **No stealth/fingerprint patching (D15).** | agentic-facebook provisioning + Phase 0 CDP evidence |
 | `pacing.py` | The **budget governor** (D8): consumes `x-ratelimit-remaining` / `-reset` / `-used` from each response, enforces the 1.0s floor, stretches toward `reset / remaining` as budget depletes, raises `RateLimitedError` at exhaustion. Single non-bypassable choke point. | new (small; this is the project's distinctive piece) |
 | `endpoints.py` | Pure URL+param builders per command: `subreddit_path`, `post_path`, `comment_subtree_path`, `user_path`, `search_path`, `subreddits_search_path`, `about_path`. No I/O. | new (small) |
 | `parse.py` | Pure walkers: `Listing` → `(list[thing_data], after)`; `parse_post_response` (2-element array → post + comment forest); recursive `replies` walk; `more`-node collection; subtree splice. Per-kind dispatch (`t1/t2/t3/t5/more`). `EnvelopeParseError` on structural drift or on a challenge-HTML body where JSON was expected (→ exit 4). | agentic-threads `parse.py` (retargeted) |
 | `model.py` | `Post`/`Comment`/`Subreddit`/`User`/`Media` dataclasses + `to_dict()`; `*_FIELD_DESCRIPTIONS`; `schema_fields()` anchored on `to_dict()`; `json_schema()` (draft 2020-12). `build_*` normalizers. | agentic-threads `model.py` |
 | `retrieve.py` | Orchestrators: `fetch_subreddit`, `fetch_post` (adaptive comment-tree expansion), `fetch_user`, `search`, `find_subreddits`, `fetch_subreddit_info`. `after`-cursor loop, `--limit`/`--since`/`--until` composition, `stop_reason` vocabulary, request budget, `RetrieveResult`. Transport-agnostic. | agentic-threads `retrieve.py` |
-| `redact.py` | Scrub sensitive keys in diagnostics (cookie/token/authorization headers, profile paths) + truncate free-text keys (`selftext`, `body`). Diagnostics only, never the output file. | agentic-threads `redact.py` |
+| `redact.py` | Scrub sensitive keys in diagnostics (cookie/token/authorization headers, profile paths) + truncate free-text keys (`selftext`, `body`). Normalized output fields remain unredacted; optional `raw` attachments pass through this same redaction choke point unless `--no-redact` is explicit. | agentic-threads `redact.py` |
 | `cli.py` | argparse parser, subcommand handlers, `_HANDLERS` dispatch, exit-code contract, `catalog` (from parser) + `schema` (from model), `--output` writing + stderr summary. | agentic-threads `cli.py` |
 
 ## The transport seam
 
 ```python
 class BrowserSession:
-    def warm(self) -> None: ...                     # load reddit.com, wait out the JS challenge
+    def warm(self) -> None: ...  # start minimal Chrome, attach Scrapling over CDP, clear challenge
     def get_json(self, path: str) -> dict | list: ...  # same-origin fetch inside the page
     def close(self) -> None: ...
 ```
@@ -107,5 +107,5 @@ Schema is **generated from the code** (`schema_fields()` anchored on `to_dict()`
 ## The three invariants to preserve
 
 1. **Everything derived, never transcribed** — `catalog` from the live argparse parser, schema from `to_dict()`-anchored descriptions, exit codes from one `errors` table. Tests assert non-drift.
-2. **One choke point for pacing, one for redaction** — every request passes `pacing.py` regardless of entry point; every diagnostic surface routes through `redact`, the output file never does.
+2. **One choke point for pacing, one for redaction** — every request passes `pacing.py` regardless of entry point; every diagnostic surface and optional `raw` attachment routes through `redact`, while normalized output fields deliberately bypass it.
 3. **The transport seam stays narrow** — nothing above `session.get_json()` may know about browsers, pages, or cookies. This is what lets OAuth return later if Reddit ever approves it.

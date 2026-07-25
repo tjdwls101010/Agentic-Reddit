@@ -1,3 +1,3 @@
-"""Agentic Reddit — an agentic crawler for Reddit (work in progress)."""
+"""Agentic Reddit package."""
 
-__version__ = "0.0.1"
+__version__ = "0.1.0"

@@ -1,0 +1,48 @@
+{
+  "kind": "Listing",
+  "data": {
+    "after": null,
+    "children": [
+      {
+        "kind": "t3",
+        "data": {
+          "id": "abc123",
+          "name": "t3_abc123",
+          "permalink": "/r/SyntheticSpace/comments/abc123/synthetic_post/",
+          "url": "https://example.invalid/article",
+          "subreddit": "SyntheticSpace",
+          "subreddit_name_prefixed": "r/SyntheticSpace",
+          "author": "synthetic_alice",
+          "author_fullname": "t2_alice01",
+          "title": "Synthetic link post",
+          "selftext": "",
+          "created_utc": 1704067200,
+          "edited": false,
+          "score": 42,
+          "upvote_ratio": 0.95,
+          "num_comments": 2,
+          "num_crossposts": 0,
+          "over_18": true,
+          "spoiler": false,
+          "is_self": false,
+          "is_video": false,
+          "is_original_content": true,
+          "stickied": false,
+          "pinned": false,
+          "locked": false,
+          "distinguished": null,
+          "link_flair_text": "Synthetic",
+          "domain": "example.invalid",
+          "thumbnail": "https://example.invalid/thumb.png",
+          "total_awards_received": 1,
+          "removed_by_category": null,
+          "gallery_data": {"items": [{"media_id": "media-one"}, {"media_id": "media-two"}]},
+          "media_metadata": {
+            "media-one": {"s": {"u": "https://example.invalid/one.png", "x": 640, "y": 480}},
+            "media-two": {"s": {"u": "https://example.invalid/two.png", "x": 800, "y": 600}}
+          }
+        }
+      }
+    ]
+  }
+}

@@ -8,6 +8,13 @@ __pycache__/
 build/
 dist/
 
+# Local browser and captured Reddit data
+scratch/
+*.raw.json
+output/
+profiles/
+browsers/
+
 # Virtual environments
 .venv/
 venv/

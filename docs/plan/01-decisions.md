@@ -139,13 +139,10 @@ Decisions agreed with the user during the 2026-07-24 planning interview (Korean)
 
 ---
 
-## Open questions remaining for Phase 0
+## Phase 0 results (2026-07-25)
 
-The data-layer unknowns were all closed during planning (see `00` "Recon status"). What remains is **cold-start behaviour under scrapling**, which could not be tested from Claude-in-Chrome:
-
-- **Q-1 (GATE) — Does a genuinely fresh scrapling profile pass the JS challenge?** All recon ran in a Chrome profile that had already visited Reddit and held clearance cookies. A brand-new profile must execute the challenge from scratch. Verify: fresh profile dir → load `reddit.com` → poll until a real Reddit document renders → `fetch('/r/python/hot.json')` → 200. **If this fails, halt and consult the user** — it is the only remaining single point of failure.
-- **Q-2 — Headless or headed?** Headless is far better UX for a distributed CLI (no window per command). Determine whether headless passes the challenge. If only headed works, decide with the user between a headed default and a `--headed` fallback. Related: how long does clearance persist in the profile (does `setup` need re-running)?
-- **Q-3 — Top-level `more` handling.** Choose between raising the initial `limit`, per-child permalink GETs under budget, or reporting the remainder unexpanded (D7).
-- **Q-4 — Rate-window confirmation.** Confirm the ~600s window length and whether it is per-IP or per-profile, and confirm the governor's behaviour at `remaining == 0` (429 shape, `retry-after` presence).
-- **Q-5 — `over_18` fidelity.** Confirm `t3.over_18` and `t5.over18` map correctly through the model (note the different spellings), and that the `about` vs listing spellings are both handled.
-- **Q-6 — Anonymous edge cases.** Private/banned/quarantined subreddits, suspended/deleted users, deleted posts: capture the exact anonymous response shapes so `NotFoundError`/`TargetUnavailableError` (exit 5) map correctly rather than surfacing as parse errors.
+- **Q-1/Q-2 resolved — minimal external launch + Scrapling CDP succeeds headless.** Scrapling's ordinary Playwright-managed launch remained on Reddit's JS challenge in both headless and headed modes, including `real_chrome=True`. Launching the isolated Chrome-for-Testing executable directly with only a fresh `--user-data-dir`, remote-debugging port, and first-run suppression cleared the challenge in headless mode. Scrapling then attached over CDP and a same-origin `/r/python/new.json?limit=3` fetch returned HTTP 200 `Listing` on the first attempt. The shipped session must therefore own the minimal Chrome subprocess and attach Scrapling over CDP; it must not use Scrapling's managed launch path. This is not a stealth or fingerprint-spoofing layer.
+- **Q-3 resolved — report top-level remainder unexpanded.** A `limit=1&depth=1` probe produced a top-level `more` with 12,941 child ids. One request per child is physically incompatible with the anonymous budget. Use the initial comment limit to materialise what Reddit returns and honestly stop with `comment_limit` when a `t3_…`-parented `more` remains.
+- **Q-4 resolved for the governor contract.** The successful fresh run again exposed `used + remaining = 100`, with reset counting down in seconds. The 18-request capture moved `remaining` from 99 to 82 without a 429. Per-IP versus per-profile sharing is not needed by the client because every response carries the authoritative budget.
+- **Q-5 resolved.** Live anonymous responses confirmed `t3.over_18` and `t5.over18`; both are mapped to output `over_18`.
+- **Q-6 resolved.** Anonymous unavailable shapes are: private `403 {"reason":"gold_only"}`, quarantined `403 {"reason":"quarantined"}`, suspended user `403`, banned subreddit `404 {"reason":"banned"}`, and missing user/post `404`. These map to exit 5 rather than envelope drift.

@@ -1,0 +1,18 @@
+{
+  "id": "video001",
+  "name": "t3_video001",
+  "permalink": "/r/synthetic_space/comments/video001/video/",
+  "url": "https://www.reddit.com/r/synthetic_space/comments/video001/video/",
+  "subreddit": "synthetic_space",
+  "author": "synthetic_video_author",
+  "title": "Synthetic video",
+  "created_utc": 1704067200,
+  "is_video": true,
+  "secure_media": {
+    "reddit_video": {
+      "fallback_url": "https://v.redd.it/synthetic/DASH_720.mp4?source=fallback",
+      "width": 1280,
+      "height": 720
+    }
+  }
+}
