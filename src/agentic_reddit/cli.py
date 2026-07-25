@@ -25,7 +25,7 @@ class _ArgumentParser(argparse.ArgumentParser):
 
     def error(self, message: str) -> None:
         self.print_usage(sys.stderr)
-        self.exit(1, f"{self.prog}: error: {redact.scrub_diagnostic(message)}\n")
+        self.exit(1, f"{self.prog}: error: {redact.scrub_usage_error(message)}\n")
 
 
 def _parse_iso_date(value: str) -> date:

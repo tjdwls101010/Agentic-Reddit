@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agentic_reddit.redact import redact, redact_text, scrub_diagnostic
+from agentic_reddit.redact import redact, redact_text, scrub_diagnostic, scrub_usage_error
 
 
 def test_redact_scrubs_nested_credential_keys_and_headers() -> None:
@@ -101,3 +101,16 @@ def test_scrub_diagnostic_redacts_custom_paths_and_bounds_free_text() -> None:
     assert custom_output not in message
     assert len(bounded) <= 80
     assert "untrusted diagnostic value" not in bounded
+
+
+def test_scrub_usage_error_keeps_long_messages_and_still_scrubs_secrets() -> None:
+    choices = ", ".join(
+        f"'{name}'" for name in ("setup", "status", "doctor", "catalog", "schema", "subreddit-info")
+    )
+    usage_error = f"argument command: invalid choice: 'nosuchcmd' (choose from {choices})"
+    scrubbed = scrub_usage_error(f"{usage_error} token=live-token /Users/example/profile")
+
+    assert len(usage_error) > 80
+    assert usage_error in scrubbed
+    assert "live-token" not in scrubbed
+    assert "/Users/example/profile" not in scrubbed

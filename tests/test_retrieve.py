@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from agentic_reddit.errors import EnvelopeParseError, TargetUnavailableError
+from agentic_reddit.errors import EnvelopeParseError, NotFoundError, TargetUnavailableError
 from agentic_reddit.retrieve import (
     fetch_post,
     fetch_subreddit,
@@ -225,6 +225,20 @@ def test_user_search_subreddits_and_info_return_their_declared_kinds():
     assert [type(item).__name__ for item in people.items] == ["User"]
     assert [type(item).__name__ for item in communities.items] == ["Subreddit"]
     assert [type(item).__name__ for item in about.items] == ["Subreddit"]
+
+
+def test_subreddit_info_separates_a_missing_subreddit_from_envelope_drift():
+    with pytest.raises(NotFoundError):
+        fetch_subreddit_info(FakeSession([listing([])]), "zqxnope12345")
+
+    drifted = (
+        listing([thing("t5", {"id": "sub"})]),
+        thing("t3", {"id": "post"}),
+        {"kind": "Listing", "data": []},
+    )
+    for response in drifted:
+        with pytest.raises(EnvelopeParseError, match="t5 envelope"):
+            fetch_subreddit_info(FakeSession([response]), "python")
 
 
 def test_post_splices_t1_more_with_permalink_subtree():
