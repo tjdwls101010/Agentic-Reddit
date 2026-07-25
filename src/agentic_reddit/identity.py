@@ -36,6 +36,30 @@ def normalize_subreddit_identifier(raw: str) -> tuple[str, str]:
     return "subreddit", name
 
 
+def normalize_subreddit_group(raw: str) -> tuple[str, str]:
+    """Return a validated combined subreddit listing identifier."""
+    value = _require_text(raw, "subreddit")
+    if _looks_like_url(value):
+        segments = _reddit_url_segments(value)
+        if len(segments) != 2 or segments[0].casefold() != "r":
+            raise InvalidIdentifierError("expected a subreddit URL")
+        name = segments[1]
+    else:
+        parts = [part for part in value.split("/") if part]
+        if len(parts) == 1:
+            name = parts[0]
+        elif len(parts) == 2 and parts[0].casefold() == "r":
+            name = parts[1]
+        else:
+            raise InvalidIdentifierError("invalid subreddit identifier")
+    names = name.split("+")
+    if len(names) > 10:
+        raise InvalidIdentifierError("too many subreddits in a combined listing")
+    if any(not part or not _SUBREDDIT_RE.fullmatch(part) for part in names):
+        raise InvalidIdentifierError("invalid subreddit name")
+    return "subreddits", name
+
+
 def normalize_user_identifier(raw: str) -> tuple[str, str]:
     """Return a validated Reddit user identifier as ``("user", name)``."""
     value = _require_text(raw, "user")

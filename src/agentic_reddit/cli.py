@@ -141,6 +141,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_read_args(post)
 
+    comment = commands.add_parser("comment", help="Read one comment and its reply subtree.")
+    comment.add_argument("permalink", help="Comment permalink URL.")
+    comment.add_argument(
+        "--comment-sort",
+        choices=["confidence", "top", "best", "new", "controversial", "old", "qa"],
+        default="confidence",
+        help="Comment sort order.",
+    )
+    comment.add_argument("--depth", type=int, default=None, help="Maximum comment-tree depth.")
+    comment.add_argument(
+        "--comment-limit", type=int, default=500, help="Maximum comments to materialize."
+    )
+    comment.add_argument(
+        "--context",
+        type=int,
+        default=None,
+        help="Include up to N ancestor comments; Reddit clamps large values.",
+    )
+    _add_read_args(comment)
+
     user = commands.add_parser("user", help="Read a redditor's activity.")
     user.add_argument("name", help="Redditor name or URL.")
     user.add_argument(
@@ -185,16 +205,35 @@ def build_parser() -> argparse.ArgumentParser:
     subreddit_info = commands.add_parser("subreddit-info", help="Read subreddit metadata.")
     subreddit_info.add_argument("name", help="Subreddit name or URL.")
     _add_read_args(subreddit_info)
+
+    user_info = commands.add_parser("user-info", help="Read a redditor profile.")
+    user_info.add_argument("name", help="Redditor name or URL.")
+    _add_read_args(user_info)
+
+    related = commands.add_parser("related", help="Find other discussions of the same link.")
+    related.add_argument("identifier", help="Post ID or URL.")
+    related.add_argument(
+        "--sort",
+        choices=["num_comments", "new"],
+        default=None,
+        help="Other-discussions sort order.",
+    )
+    related.add_argument("--crossposts-only", action="store_true", help="Include only crossposts.")
+    _add_read_args(related)
+    _add_limit_args(related)
     return parser
 
 
 _COMMAND_OUTPUT: dict[str, str] = {
     "subreddit": "Post",
     "post": "Post | Comment",
+    "comment": "Post | Comment",
     "user": "Post | Comment",
     "search": "Post | Subreddit | User",
     "subreddits": "Subreddit",
     "subreddit-info": "Subreddit",
+    "user-info": "User",
+    "related": "Post",
 }
 
 
@@ -359,10 +398,13 @@ def _display_path(path: Path) -> str:
 
 
 def _item_summary(items: list[object], command: str, search_type: str | None = None) -> str:
-    if command in {"post", "user"}:
+    def comment_count(comments: Iterable[model.Comment]) -> int:
+        return sum(1 + comment_count(getattr(comment, "replies", [])) for comment in comments)
+
+    if command in {"post", "comment", "user"}:
         counts = [
             (sum(isinstance(item, model.Post) for item in items), "post"),
-            (sum(isinstance(item, model.Comment) for item in items), "comment"),
+            (comment_count(item for item in items if isinstance(item, model.Comment)), "comment"),
         ]
         summary = ", ".join(
             f"{count} {label}{'' if count == 1 else 's'}" for count, label in counts if count
@@ -373,6 +415,8 @@ def _item_summary(items: list[object], command: str, search_type: str | None = N
         "search": {"link": "posts", "sr": "subreddits", "user": "users"}[search_type or "link"],
         "subreddits": "subreddits",
         "subreddit-info": "subreddits",
+        "user-info": "users",
+        "related": "posts",
     }
     return f"{len(items)} {labels[command]}"
 
@@ -436,7 +480,7 @@ def _with_browser(args: argparse.Namespace, operation: Callable[[Any], Any]) -> 
 def _cmd_subreddit(args: argparse.Namespace) -> int:
     from . import retrieve
 
-    _, subreddit = identity.normalize_subreddit_identifier(args.name)
+    _, subreddit = identity.normalize_subreddit_group(args.name)
     since, until = _read_bounds(args)
     result = _with_browser(
         args,
@@ -472,6 +516,32 @@ def _cmd_post(args: argparse.Namespace) -> int:
         ),
     )
     return _finish(result, post_id, args)
+
+
+def _cmd_comment(args: argparse.Namespace) -> int:
+    from . import retrieve
+
+    subreddit, post_id, comment_id = identity.permalink_identifiers(args.permalink)
+    if comment_id is None:
+        raise errors.InvalidIdentifierError(
+            "that URL points at a post, not a comment; use: agentic-reddit post <url>"
+        )
+    result = _with_browser(
+        args,
+        lambda browser: retrieve.fetch_comment(
+            browser,
+            subreddit,
+            post_id,
+            comment_id,
+            comment_sort=args.comment_sort,
+            depth=args.depth,
+            comment_limit=args.comment_limit,
+            context=args.context,
+            max_requests=config.DEFAULT_MAX_REQUESTS,
+            raw=args.raw,
+        ),
+    )
+    return _finish(result, comment_id, args)
 
 
 def _cmd_user(args: argparse.Namespace) -> int:
@@ -549,6 +619,38 @@ def _cmd_subreddit_info(args: argparse.Namespace) -> int:
     return _finish(result, subreddit, args)
 
 
+def _cmd_user_info(args: argparse.Namespace) -> int:
+    from . import retrieve
+
+    _, user = identity.normalize_user_identifier(args.name)
+    result = _with_browser(
+        args,
+        lambda browser: retrieve.fetch_user_info(
+            browser, user, max_requests=config.DEFAULT_MAX_REQUESTS, raw=args.raw
+        ),
+    )
+    return _finish(result, user, args)
+
+
+def _cmd_related(args: argparse.Namespace) -> int:
+    from . import retrieve
+
+    _, post_id = identity.normalize_post_identifier(args.identifier)
+    result = _with_browser(
+        args,
+        lambda browser: retrieve.fetch_related(
+            browser,
+            post_id,
+            sort=args.sort,
+            crossposts_only=args.crossposts_only,
+            limit=args.limit,
+            max_requests=config.DEFAULT_MAX_REQUESTS,
+            raw=args.raw,
+        ),
+    )
+    return _finish(result, post_id, args)
+
+
 _HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "setup": _cmd_setup,
     "status": _cmd_status,
@@ -557,20 +659,34 @@ _HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "schema": _cmd_schema,
     "subreddit": _cmd_subreddit,
     "post": _cmd_post,
+    "comment": _cmd_comment,
     "user": _cmd_user,
     "search": _cmd_search,
     "subreddits": _cmd_subreddits,
     "subreddit-info": _cmd_subreddit_info,
+    "user-info": _cmd_user_info,
+    "related": _cmd_related,
 }
 
 
 def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     if hasattr(args, "limit") and args.limit is not None and args.limit < 0:
         parser.error("--limit must be non-negative")
-    for name in ("depth", "comment_limit"):
+    for name in ("depth", "comment_limit", "context"):
         value = getattr(args, name, None)
         if value is not None and value < 0:
             parser.error(f"--{name.replace('_', '-')} must be non-negative")
+    if args.command == "post":
+        try:
+            kind, _ = identity.normalize_permalink(args.identifier)
+            if kind == "comment":
+                parser.error(
+                    "that URL points at a comment, not a post; use "
+                    "'agentic-reddit comment <url>' for its subthread, or pass the post id "
+                    "or the post URL"
+                )
+        except errors.InvalidIdentifierError:
+            pass
     max_wait = getattr(args, "max_wait", None)
     if max_wait is not None and (not math.isfinite(max_wait) or max_wait < 0):
         parser.error("--max-wait must be a finite non-negative number")

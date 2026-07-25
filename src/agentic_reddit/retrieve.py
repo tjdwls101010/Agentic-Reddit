@@ -120,6 +120,7 @@ def _paginate(
     since: datetime | None,
     until: datetime | None,
     raw: bool,
+    select: Callable[[object], object] | None = None,
 ) -> RetrieveResult:
     items: list[Item] = []
     seen: set[str] = set()
@@ -134,7 +135,8 @@ def _paginate(
         if reason is not None:
             return _result(items, reason, run, since_crossed=since_crossed)
         assert body is not None
-        raw_items, after = parse.walk_listing_nodes(body)
+        selected = select(body) if select is not None else body
+        raw_items, after = parse.walk_listing_nodes(selected)
         page_items = _listing_items(raw_items, allowed_kinds=allowed_kinds, raw=raw)
         for index, item in enumerate(page_items):
             fullname = item.fullname
@@ -365,6 +367,29 @@ def fetch_subreddit_info(
     return _result(items, "listing_exhausted", run)
 
 
+def fetch_user_info(
+    session: object,
+    user: str,
+    *,
+    max_requests: int | None = None,
+    raw: bool = False,
+) -> RetrieveResult:
+    """Fetch one Reddit user's metadata."""
+    user = _required_identifier(user, "user")
+    run = _run(session, max_requests)
+    body, reason = run.get(endpoints.user_about_path(user))
+    if reason is not None:
+        return _result([], reason, run)
+    if (
+        not isinstance(body, dict)
+        or body.get("kind") != "t2"
+        or not isinstance(body.get("data"), dict)
+    ):
+        raise EnvelopeParseError("user about response was not a t2 envelope")
+    items = _listing_items([body], allowed_kinds={"t2"}, raw=raw)
+    return _result(items, "listing_exhausted", run)
+
+
 def fetch_post(
     session: object,
     post: str,
@@ -388,12 +413,102 @@ def fetch_post(
         return _result([], reason, run)
     assert body is not None
     root_data, comment_nodes = parse.parse_post_response(body)
+    root = build_post(root_data, include_raw=raw)
+    return _expand_comment_forest(
+        run,
+        root_data,
+        comment_nodes,
+        forest_parent_id=root.fullname,
+        depth=depth,
+        comment_limit=comment_limit,
+        raw=raw,
+    )
+
+
+def fetch_comment(
+    session: object,
+    subreddit: str,
+    post_id: str,
+    comment_id: str,
+    *,
+    comment_sort: str = "confidence",
+    depth: int | None = None,
+    comment_limit: int | None = 500,
+    context: int | None = None,
+    max_requests: int | None = None,
+    raw: bool = False,
+) -> RetrieveResult:
+    """Fetch one comment and expand its reply subtree."""
+    subreddit = _required_identifier(subreddit, "subreddit")
+    post_id = _required_identifier(post_id, "post")
+    comment_id = _required_identifier(comment_id, "comment")
+    _validate_limit(depth, "depth")
+    _validate_limit(comment_limit, "comment_limit")
+    run = _run(session, max_requests)
+    body, reason = run.get(
+        endpoints.comment_subtree_path(
+            subreddit,
+            post_id,
+            comment_id,
+            limit=comment_limit,
+            depth=depth,
+            sort=comment_sort,
+            context=context,
+        )
+    )
+    if reason is not None:
+        return _result([], reason, run)
+    assert body is not None
+    root_data, comment_nodes = parse.parse_post_response(body)
+    # Measured 2026-07-26: an anchored request whose comment id is not in that post
+    # is answered with the post's ordinary top-level comment listing rather than a
+    # 404, so the envelope alone cannot say whether the anchor was honoured.  Shape
+    # is not enough either -- a post with a single top-level comment produces the
+    # same one-t1 forest a real anchor does.  The only sound test is whether the
+    # requested comment is actually in what came back; ``context`` re-roots the
+    # forest at an ancestor, so it can be nested rather than the root.
+    if (
+        not comment_nodes
+        or comment_nodes[0]["kind"] != "t1"
+        or not _forest_contains(comment_nodes, comment_id.casefold())
+    ):
+        raise NotFoundError("comment does not exist in that post")
+    parent_id = comment_nodes[0]["data"].get("parent_id")
+    if not isinstance(parent_id, str):
+        parent_id = build_post(root_data, include_raw=raw).fullname
+    return _expand_comment_forest(
+        run,
+        root_data,
+        comment_nodes,
+        forest_parent_id=parent_id,
+        depth=depth,
+        comment_limit=comment_limit,
+        raw=raw,
+    )
+
+
+def _expand_comment_forest(
+    run: _Run,
+    root_data: dict[str, Any],
+    comment_nodes: list[dict[str, Any]],
+    *,
+    forest_parent_id: str,
+    depth: int | None,
+    comment_limit: int | None,
+    raw: bool,
+) -> RetrieveResult:
+    """Build and expand a parsed post/comment forest."""
     root, comments = _post_models(root_data, comment_nodes, raw=raw)
     if comment_limit == 0:
         return _result([root], "comment_limit", run)
-    if _cap_comment_forest(comment_nodes, comment_limit, root.fullname):
+    if _cap_comment_forest(comment_nodes, comment_limit, forest_parent_id):
         root, comments = _post_models(root_data, comment_nodes, raw=raw)
         return _result([root, *comments], "comment_limit", run)
+
+    # Branches Reddit declines to expand any further through their own permalink.
+    # Anchoring at such a parent returns exactly what is already visible, so the
+    # branch is skipped rather than retried, and the run reports an incomplete tree.
+    unexpandable: set[str] = set()
 
     while True:
         mores = parse.collect_more(comment_nodes)
@@ -405,6 +520,7 @@ def fetch_post(
                 more
                 for more in mores
                 if _more_parent(more).startswith("t1_")
+                and _more_parent(more) not in unexpandable
                 and (_more_depth(more) is None or depth is None or _more_depth(more) < depth)
             ),
             None,
@@ -435,14 +551,69 @@ def fetch_post(
         if not parse.splice_subtree(comment_nodes, parent_id, subtree_root):
             raise EnvelopeParseError("subtree response could not be spliced into its more node")
         if _comment_tree_signature(comment_nodes) == before:
-            raise EnvelopeParseError(
-                f"permalink subtree made no progress for {parent_id}: "
-                "comment tree signature unchanged"
-            )
-        capped = _cap_comment_forest(comment_nodes, comment_limit, root.fullname)
+            # The envelope was well-formed and spliced cleanly; it simply carried
+            # nothing new.  That is a Reddit-side dead end for this branch, not
+            # response drift, so it must not be reported as one -- exit 4 would send
+            # the caller into a pointless doctor / setup --force cycle over the shape
+            # of one thread.  Drop this branch and keep expanding the others.
+            unexpandable.add(parent_id)
+            continue
+        capped = _cap_comment_forest(comment_nodes, comment_limit, forest_parent_id)
         root, comments = _post_models(root_data, comment_nodes, raw=raw)
         if capped:
             return _result([root, *comments], "comment_limit", run)
+
+
+def fetch_related(
+    session: object,
+    post: str,
+    *,
+    sort: str | None = None,
+    crossposts_only: bool = False,
+    limit: int | None = None,
+    max_requests: int | None = None,
+    raw: bool = False,
+) -> RetrieveResult:
+    """Fetch other discussions of the same link."""
+    post = _required_identifier(post, "post")
+    _validate_limit(limit)
+    run = _run(session, max_requests)
+
+    def select(body: object) -> object:
+        if not isinstance(body, list) or len(body) != 2:
+            raise EnvelopeParseError("duplicates response was not a two-element array")
+        return body[1]
+
+    return _paginate(
+        run,
+        lambda after, count: endpoints.duplicates_path(
+            post,
+            sort=sort,
+            crossposts_only=crossposts_only,
+            after=after,
+            count=count or None,
+            limit=100,
+        ),
+        allowed_kinds={"t3"},
+        limit=limit,
+        since=None,
+        until=None,
+        raw=raw,
+        select=select,
+    )
+
+
+def _forest_contains(nodes: list[dict[str, Any]], comment_id: str) -> bool:
+    """Report whether a comment id appears anywhere in a parsed comment forest."""
+    for node in nodes:
+        if node["kind"] != "t1":
+            continue
+        identifier = node["data"].get("id")
+        if isinstance(identifier, str) and identifier.casefold() == comment_id:
+            return True
+        if _forest_contains(_reply_children(node), comment_id):
+            return True
+    return False
 
 
 def _required_identifier(value: str, label: str) -> str:
