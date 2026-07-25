@@ -16,13 +16,13 @@ Two things make this tool unlike its `agentic-facebook` / `agentic-x` / `agentic
 ## Step 1 — get the tool, and get the current one
 
 ```bash
-agentic-reddit --version                                  # -> "agentic-reddit 0.1.0"
+agentic-reddit --version                                  # -> "agentic-reddit 0.2.0"
 curl -s https://pypi.org/simple/agentic-reddit/ | grep -oE 'agentic[_-]reddit-[0-9]+\.[0-9]+\.[0-9]+' | sed 's/.*-//' | sort -V | tail -1
 ```
 
 If the installed version is behind, say so in one line and upgrade before doing the user's actual work — don't ask, and don't do it silently, because a mid-task version change has to be diagnosable if results later look strange:
 
-> agentic-reddit 0.1.0 is installed, 0.1.1 is on PyPI — upgrading first.
+> agentic-reddit 0.2.0 is installed, 0.2.1 is on PyPI — upgrading first.
 
 ```bash
 uv tool install --upgrade --no-cache agentic-reddit     # or: pipx upgrade agentic-reddit
@@ -209,14 +209,16 @@ So: **write output to `/tmp`, never into the repo**, and never `git add` it — 
 
 **Exit 4 — Reddit returned something that isn't the JSON we expected**: an anti-bot challenge page, or a changed response shape. Try `agentic-reddit doctor`, then `agentic-reddit setup --force` to re-warm the profile — a stale profile that has lost its challenge clearance is the common cause. **There is no local self-heal beyond that.** Unlike the Threads sibling, `doctor` has no `--refresh` flag and there are no persisted query ids to re-anchor; if a re-warm doesn't fix it, the response shape genuinely drifted and the fix ships as a release. Check Step 1, and if you're already current, say the tool needs a newer version rather than retrying.
 
-**But check the name before you believe that.** `subreddit-info` on a subreddit that simply doesn't exist also exits 4, with `subreddit about response was not a t5 envelope` — Reddit doesn't 404 that request, it answers with something that isn't a subreddit object, and the parser can't tell "no such community" apart from "the envelope changed." So a typo'd name sends you into a `doctor` / `setup --force` cycle that fixes nothing. The cheap discriminator: run one command you know works (`subreddit-info python`). If the control succeeds, the transport is fine and the *target* is the problem — confirm with `subreddit <name> --limit 5` (a nonexistent community returns `no_matches`, exit 0) or find the real name with `subreddits <query>`.
+Exit 4 means drift, so **a mistyped name does not land here** — it exits 5. Don't spend a `doctor` / `setup --force` cycle on a target problem.
 
-**Exit 5 — the target was explicitly refused**: Reddit answered 404 or 403, or returned a body that says "not found" / "unavailable". In practice that means a deleted post, a suspended or nonexistent user, or a subreddit Reddit actively blocks rather than merely lacks. Not retryable. Report it, and use `subreddits <query>` if it looks like a typo. Note that this is **narrower than it sounds** — a merely nonexistent subreddit does not reach here, per the exit-4 note above.
+**Exit 5 — the target doesn't exist, or was refused**: a deleted post, a suspended or nonexistent user, a private or banned community, or a subreddit that simply isn't there. Not retryable. Report it, and use `subreddits <query>` if it looks like a typo.
+
+`subreddit-info <name>` is therefore your **existence check**: it exits 5 on a name that doesn't exist. The listing path deliberately does not — `subreddit <name>` on a nonexistent community exits 0 with `no_matches`, because Reddit answers an unknown name's listing with the same empty listing a real-but-quiet community returns, and the two are genuinely indistinguishable from one request. So `no_matches` means "nothing to show", not "no such place"; ask `subreddit-info` when you need to know which.
 
 **Exit 7 — `--since` unconfirmed.** See `stop_reason`. The data you have is real but the range is not guaranteed complete.
 
-**Exit 1 — usage error, and the message may be gone.** This one has a trap worth knowing about: the CLI runs every argparse error through its redaction layer, which **replaces any message over 80 characters with `[REDACTED diagnostic text: N chars]`**. Short errors survive (`unrecognized arguments: --limit 5`), but `invalid choice` never does — it's long precisely because it lists all eleven subcommands. So the sibling packages' rule of thumb ("exit 1 saying `invalid choice` means you're out of date") **cannot fire here**; you'll see a redacted blank instead.
+**Exit 1 — usage error.** Read the message; it says what argparse rejected. `invalid choice: '<name>'` followed by the list of real subcommands means the command you reached for isn't in this install — almost always an **out-of-date install**, so go back to Step 1. Never work around a missing command by improvising a different one.
 
-What survives is the **usage line printed just above the error**, which lists the valid subcommands. Read that. If the command you tried isn't in it, that's an out-of-date install — go back to Step 1. Never work around a missing command by improvising a different one.
+If that error arrives as `[REDACTED diagnostic text: N chars]` instead of readable text, you are on a pre-0.2.0 build, which over-redacted its own usage errors. That is itself the out-of-date signal, and the same fix applies. The usage line above the error lists the valid subcommands either way.
 
 **Not a bug, though it looks like one:** `--since`/`--until` are rejected for `search --type sr` and `--type user` (only `--type link` supports a date window), and passing a date window forces `new` ordering, overriding `--sort`. Both are intentional.

@@ -168,7 +168,7 @@ Following the Threads precedent exactly (its plan landed as PR #4, its skill as 
 
 ## 8. Follow-ups — noted, deliberately not done in this pass
 
-1. **Over-redaction of argparse usage errors** (§2.3-D). `cli.py:28` routes usage errors through a scrubber meant for scraped-content diagnostics, so any message over 80 characters — including every `invalid choice` — is destroyed. Worth a package fix: exempt argparse's own errors, or redact by pattern rather than by length. Package work; not part of the skill pass.
+1. ~~**Over-redaction of argparse usage errors** (§2.3-D).~~ **Done in 0.2.0.** `cli.py:28` routed usage errors through a scrubber meant for scraped-content diagnostics, so any message over 80 characters — including every `invalid choice` — was destroyed. Fixed by exempting argparse's own errors from the length bound while keeping credential and path scrubbing (`redact.scrub_usage_error`). The same release fixed the exit-4/exit-5 boundary recorded in `.claude/harness-spec.md`, and both SKILL.md workarounds were retired.
 2. **Ultra Fetch boundary** (S6). Add a "Reddit → use `agentic-reddit`" exception to Ultra Fetch's `description`, alongside its existing `scrape-x`/`scrape-fb` exceptions, whenever Ultra Fetch is next touched.
 3. **Stale sibling installs** (§2.3-I). `scraper-for-x` and `scraper-for-facebook` are installed under pre-rebrand names, so the `x` and `facebook` skills reference CLIs that are not on PATH. Unrelated to Reddit; fix when convenient.
 4. **Family-wide skill location** (S1). Decided per-repo for the fourth time. If reading these networks from arbitrary projects ever becomes the norm, symlink all four into `~/.claude/skills/` in one pass rather than deciding again per package.

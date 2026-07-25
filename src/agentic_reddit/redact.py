@@ -97,8 +97,7 @@ def redact_text(value: str, max_len: int = _TEXT_TRUNCATE_LEN) -> str:
     return f"{value[:max_len]}...[redacted {len(value) - max_len} more chars]"
 
 
-def scrub_diagnostic(value: object, *, path_values: Iterable[object] = ()) -> str:
-    """Redact unstructured diagnostic text without exposing local values."""
+def _substitute(value: object, path_values: Iterable[object]) -> str:
     text = str(value)
     text = _CREDENTIAL_VALUE_RE.sub(r"\1" + _REDACTED, text)
     text = _LOCAL_PATH_RE.sub(_REDACTED, text)
@@ -110,9 +109,26 @@ def scrub_diagnostic(value: object, *, path_values: Iterable[object] = ()) -> st
         reverse=True,
     ):
         text = text.replace(path_value, _REDACTED)
+    return text
+
+
+def scrub_diagnostic(value: object, *, path_values: Iterable[object] = ()) -> str:
+    """Redact unstructured diagnostic text without exposing local values."""
+    text = _substitute(value, path_values)
     if len(text) > _DIAGNOSTIC_TEXT_MAX_LEN:
         return f"[REDACTED diagnostic text: {len(text)} chars]"
     return text
+
+
+def scrub_usage_error(message: str) -> str:
+    """Redact an argparse usage error, which is argv rather than scraped content.
+
+    The length bound in ``scrub_diagnostic`` exists to cap unbounded third-party
+    text.  A usage error carries none, so bounding one by length only destroys
+    the diagnostic: every ``invalid choice`` message exceeds the bound because it
+    enumerates the whole subcommand surface.
+    """
+    return _substitute(message, ())
 
 
 def redact(value: Any) -> Any:

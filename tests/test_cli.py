@@ -157,6 +157,18 @@ def test_parser_error_redacts_rejected_credential_values(
     assert "[REDACTED]" in diagnostic
 
 
+def test_invalid_subcommand_error_is_readable(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as raised:
+        cli.main(["nosuchcmd"])
+
+    assert raised.value.code == 1
+    diagnostic = capsys.readouterr().err
+    assert "invalid choice" in diagnostic
+    assert "nosuchcmd" in diagnostic
+    assert "subreddit-info" in diagnostic
+    assert "REDACTED diagnostic text" not in diagnostic
+
+
 def test_verbose_exception_redacts_configured_paths_without_overmatching(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

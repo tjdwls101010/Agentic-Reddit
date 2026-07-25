@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from . import config, endpoints, parse
-from .errors import EnvelopeParseError, RateLimitedError
+from .errors import EnvelopeParseError, NotFoundError, RateLimitedError
 from .model import Comment, Post, Subreddit, User, build_comment, build_post
 
 Item = Post | Comment | Subreddit | User
@@ -320,6 +320,26 @@ def find_subreddits(
     )
 
 
+def _is_absent_subreddit(body: object) -> bool:
+    """Report Reddit's own "no such subreddit" answer to an about request.
+
+    Measured 2026-07-25: ``/r/<nonexistent>/about.json`` answers **200** with an
+    empty ``Listing`` -- byte-identical to what the same name's listing paths
+    return, which is why ``subreddit <name>`` reports ``no_matches``.  A
+    subreddit that exists always answers ``t5``, so this one shape is a missing
+    target rather than envelope drift; anything else that is not ``t5`` is still
+    drift.  The listing paths cannot make the same call, because there an empty
+    ``Listing`` is ambiguous between a missing and a merely empty subreddit.
+    """
+    if not isinstance(body, dict) or body.get("kind") != "Listing":
+        return False
+    data = body.get("data")
+    if not isinstance(data, dict):
+        return False
+    children = data.get("children")
+    return isinstance(children, list) and not children
+
+
 def fetch_subreddit_info(
     session: object,
     subreddit: str,
@@ -333,6 +353,8 @@ def fetch_subreddit_info(
     body, reason = run.get(endpoints.about_path(subreddit))
     if reason is not None:
         return _result([], reason, run)
+    if _is_absent_subreddit(body):
+        raise NotFoundError("subreddit does not exist")
     if (
         not isinstance(body, dict)
         or body.get("kind") != "t5"
